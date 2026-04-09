@@ -2,19 +2,30 @@ services:
   - type: web
     name: market-scout
     runtime: python
-    plan: free           # upgrade to starter ($7/mo) for always-on
+    plan: free
+    # ──────────────────────────────────────────────────────────────────────
+    # FREE TIER NOTE:
+    #   /tmp is ephemeral — outputs (PDFs, Excel, history) are cleared on
+    #   each redeploy or restart. This is fine for demos and testing.
+    #   To persist files across restarts, upgrade to Starter ($7/mo) and
+    #   uncomment the `disk` block at the bottom of this file.
+    # ──────────────────────────────────────────────────────────────────────
     buildCommand: pip install -r requirements.txt
     startCommand: chainlit run app.py --host 0.0.0.0 --port $PORT
     envVars:
       - key: TAVILY_API_KEY
-        sync: false      # set manually in Render dashboard
+        sync: false      # set manually in Render dashboard → Environment
       - key: GROQ_API_KEY
-        sync: false      # set manually in Render dashboard
+        sync: false      # set manually in Render dashboard → Environment
       - key: MARKET_SCOUT_OUTPUT_DIR
         value: /tmp/market_scout_outputs
       - key: PYTHONUNBUFFERED
         value: "1"
-    disk:
-      name: market-scout-data
-      mountPath: /tmp/market_scout_outputs
-      sizeGB: 1          # persistent disk — keeps history/excel/pdfs across restarts
+
+# ── Persistent disk (Starter plan and above only) ─────────────────────────────
+# Uncomment the 4 lines below after upgrading to Starter ($7/mo):
+#
+#    disk:
+#      name: market-scout-data
+#      mountPath: /tmp/market_scout_outputs
+#      sizeGB: 1
