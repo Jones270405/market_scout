@@ -1,0 +1,29 @@
+# Environment
+.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Outputs (generated at runtime)
+outputs/
+*.pdf
+*.xlsx
+*.txt
+market_scout_history.json
+market_scout_dashboard.html
+
+# Chainlit
+.chainlit/
+chainlit.db
+
+# OS
+.DS_Store
+Thumbs.db
