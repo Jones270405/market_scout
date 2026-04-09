@@ -3,7 +3,7 @@
 Market Scout — Chainlit UI
 Drop-in replacement for `adk web market_scout_agent`.
 Run locally : chainlit run app.py
-Deploy      : gunicorn/uvicorn on Render (see Procfile)
+Deploy      : Render (see Procfile / render.yaml)
 """
 
 import os
@@ -21,11 +21,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Lazy-import the pipeline (keeps startup fast) ──
 from market_scout_agent.agent import run_pipeline
 from guardrails.callbacks import (
-    HARMFUL_PATTERNS, INJECTION_PATTERNS, OUT_OF_SCOPE,
-    MIN_QUERY_LEN, MAX_QUERY_LEN,
+    HARMFUL_PATTERNS,
+    INJECTION_PATTERNS,
+    OUT_OF_SCOPE,
+    MIN_QUERY_LEN,
+    MAX_QUERY_LEN,
 )
 import re
 
@@ -36,7 +38,7 @@ OUTPUT_DIR = os.environ.get(
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-# ─── Guardrail check (mirrors callbacks.py, no ADK dependency) ───────────────
+# ─── Guardrail check ──────────────────────────────────────────────────────────
 
 def _check_input(text: str) -> str | None:
     """Returns an error string if the input should be blocked, else None."""
@@ -44,7 +46,6 @@ def _check_input(text: str) -> str | None:
         return f"⚠️ Query too short (minimum {MIN_QUERY_LEN} characters)."
     if len(text) > MAX_QUERY_LEN:
         return f"⚠️ Query too long (maximum {MAX_QUERY_LEN} characters)."
-
     lower = text.lower()
     for p in HARMFUL_PATTERNS:
         if re.search(p, lower):
@@ -102,53 +103,45 @@ async def on_start():
 async def on_message(message: cl.Message):
     text = message.content.strip()
 
-    # Greeting shortcut
     if _is_greeting(text):
         await cl.Message(content=WELCOME).send()
         return
 
-    # Input guardrail
     block = _check_input(text)
     if block:
         await cl.Message(content=block).send()
         return
 
-    # Show a thinking indicator
     async with cl.Step(name="Market Scout Pipeline", show_input=False) as step:
         step.output = "🔎 Searching the web and processing…"
 
-        # Run the blocking pipeline in a thread so the event loop isn't blocked
         try:
-            result = await asyncio.get_event_loop().run_in_executor(
-                None, run_pipeline, text
-            )
+            # asyncio.to_thread is safe in Python 3.9+ and works correctly
+            # with Chainlit's ASGI context — avoids NoEventLoopError
+            result = await asyncio.to_thread(run_pipeline, text)
         except Exception as exc:
             await cl.Message(
-                content=f"❌ Pipeline error: {str(exc)}\n\nPlease check your API keys in `.env`."
+                content=f"❌ Pipeline error: {str(exc)}\n\nPlease check your API keys in the Render dashboard → Environment."
             ).send()
             return
 
-    # ── Build the markdown report ──────────────────────────────────────────
-
-    summary = result.get("summary", {})
-    top_features = result.get("top_features", [])
-    files = result.get("files", {})
+    summary          = result.get("summary", {})
+    top_features     = result.get("top_features", [])
+    files            = result.get("files", {})
     comparison_table = result.get("comparison_table", "")
 
-    # Features section
     if top_features:
         features_md = ""
         for i, f in enumerate(top_features, 1):
-            url_line = f"  - Source: {f['url']}" if f.get("url") else ""
+            url_line = f"  - Source: {f['url']}\n" if f.get("url") else ""
             features_md += (
                 f"**{i}. {f['feature']}**\n"
-                f"  - Category: {f['category']}  |  Date: {f['date']}  |  Status: `{f['status']}`\n"
-                f"{url_line}\n\n"
+                f"  - Category: `{f['category']}`  |  Date: {f['date']}  |  Status: `{f['status']}`\n"
+                f"{url_line}\n"
             )
     else:
         features_md = "_No features found for this company._\n"
 
-    # Comparison section
     comparison_md = ""
     if comparison_table:
         comparison_md = f"\n### ⚖️ Company Comparison\n\n{comparison_table}\n"
@@ -192,12 +185,11 @@ async def on_message(message: cl.Message):
 
     await cl.Message(content=report).send()
 
-    # Attach downloadable files if they exist on disk
     attachments = []
-    for label, path_str in [
-        ("PDF Report", files.get("pdf", "")),
-        ("Text Briefing", files.get("briefing", "")),
-        ("Excel Workbook", files.get("excel", "")),
+    for path_str in [
+        files.get("pdf", ""),
+        files.get("briefing", ""),
+        files.get("excel", ""),
     ]:
         if path_str and Path(path_str).exists():
             attachments.append(
