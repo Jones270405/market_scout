@@ -3,27 +3,19 @@ services:
     name: market-scout
     runtime: python
     plan: free
-    # ──────────────────────────────────────────────────────────────────────
-    # FREE TIER NOTE:
-    #   /tmp is ephemeral — outputs cleared on each redeploy/restart.
-    #   Fine for demos. Upgrade to Starter ($7/mo) + uncomment disk block
-    #   at the bottom for persistence.
-    # ──────────────────────────────────────────────────────────────────────
     buildCommand: pip install -r requirements.txt
-    startCommand: chainlit run app.py --host 0.0.0.0 --port $PORT --headless
+    startCommand: python app.py
     envVars:
       - key: TAVILY_API_KEY
         sync: false
       - key: GROQ_API_KEY
         sync: false
-      - key: CHAINLIT_URL
-        sync: false      # set to https://market-scout-to37.onrender.com
       - key: MARKET_SCOUT_OUTPUT_DIR
         value: /tmp/market_scout_outputs
       - key: PYTHONUNBUFFERED
         value: "1"
 
-# ── Persistent disk (Starter plan and above only) ────────────────────────────
+# ── Persistent disk (Starter plan only) ──────────────────────────────────────
 # Uncomment after upgrading to Starter ($7/mo):
 #
 #    disk:

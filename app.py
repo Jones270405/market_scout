@@ -1,35 +1,32 @@
 # app.py
 """
-Market Scout — Chainlit UI
-Drop-in replacement for `adk web market_scout_agent`.
-Run locally : chainlit run app.py
-Deploy      : Render (see Procfile / render.yaml)
+Market Scout — Gradio UI
+Replaces Chainlit. Works reliably on Render free tier.
+Run locally : python app.py
+Deploy      : Render (see render.yaml)
 """
 
 import os
 import sys
+import re
 import asyncio
+import threading
 from pathlib import Path
+from datetime import datetime
 
-# ── Resolve project root so sub-packages import cleanly ──
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-import chainlit as cl
 from dotenv import load_dotenv
-
 load_dotenv()
 
+import gradio as gr
 from market_scout_agent.agent import run_pipeline
 from guardrails.callbacks import (
-    HARMFUL_PATTERNS,
-    INJECTION_PATTERNS,
-    OUT_OF_SCOPE,
-    MIN_QUERY_LEN,
-    MAX_QUERY_LEN,
+    HARMFUL_PATTERNS, INJECTION_PATTERNS, OUT_OF_SCOPE,
+    MIN_QUERY_LEN, MAX_QUERY_LEN,
 )
-import re
 
 OUTPUT_DIR = os.environ.get(
     "MARKET_SCOUT_OUTPUT_DIR",
@@ -37,11 +34,35 @@ OUTPUT_DIR = os.environ.get(
 )
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# ─── Company name extraction ──────────────────────────────────────────────────
 
-# ─── Guardrail check ──────────────────────────────────────────────────────────
+_ACTION_PREFIXES = re.compile(
+    r"^(track|monitor|research|analyse|analyze|check|find|get|show|give me|"
+    r"look up|search for|tell me about|what about|latest features? (?:of|for)?|"
+    r"(?:latest |recent )?(?:updates?|news|features?|releases?) (?:for|of|on|about)?)\s+",
+    re.IGNORECASE,
+)
+_COMPARE_PATTERN = re.compile(r"^(?:compare|vs\.?|versus)\s+", re.IGNORECASE)
+_AND_PATTERN     = re.compile(r"\s+(?:and|vs\.?|versus)\s+", re.IGNORECASE)
+
+def _extract_companies(text: str) -> str:
+    text = text.strip()
+    for _ in range(3):
+        new = _ACTION_PREFIXES.sub("", text).strip()
+        new = _COMPARE_PATTERN.sub("", new).strip()
+        if new == text:
+            break
+        text = new
+    text = _AND_PATTERN.sub(", ", text)
+    text = re.sub(
+        r"\s+(?:latest|recent|new|updates?|features?|releases?|news|info|information)$",
+        "", text, flags=re.IGNORECASE,
+    ).strip()
+    return text
+
+# ─── Guardrail ────────────────────────────────────────────────────────────────
 
 def _check_input(text: str) -> str | None:
-    """Returns an error string if the input should be blocked, else None."""
     if len(text) < MIN_QUERY_LEN:
         return f"⚠️ Query too short (minimum {MIN_QUERY_LEN} characters)."
     if len(text) > MAX_QUERY_LEN:
@@ -58,105 +79,82 @@ def _check_input(text: str) -> str | None:
             return "ℹ️ I only track competitor updates. Try: 'Track Stripe'."
     return None
 
+# ─── Main handler ─────────────────────────────────────────────────────────────
 
-# ─── Greeting ─────────────────────────────────────────────────────────────────
+def handle_query(user_input: str):
+    """
+    Yields incremental status updates, then returns:
+      (markdown_report, pdf_path, excel_path, briefing_path, dashboard_path)
+    """
+    text = user_input.strip()
 
-WELCOME = """\
-# 🔍 Welcome to Market Scout!
-**Your AI-powered Competitive Intelligence Assistant.**
-
-Here's what I can do:
-
-| Capability | Description |
-|---|---|
-| 🏢 Track a company | Latest features, API updates, releases |
-| 📅 Recency labels | WEEK / MONTH / YEAR / STALE / UNVERIFIED |
-| 📊 Excel report | Colour-coded workbook with charts |
-| 📄 PDF report | Per-run formatted PDF |
-| 🌐 HTML dashboard | Persistent dashboard across all runs |
-| ⚖️ Compare companies | Side-by-side summary table |
-
-**To get started, just type a company name:**
-- `Track Stripe`
-- `Tesla latest features`
-- `Compare PayPal and Stripe`
-"""
-
-GREETING_TRIGGERS = {
-    "hi", "hello", "hey", "greetings", "good morning",
-    "good afternoon", "good evening", "howdy", "sup", "yo",
-}
-
-
-def _is_greeting(text: str) -> bool:
-    return text.strip().lower() in GREETING_TRIGGERS
-
-
-# ─── Chainlit lifecycle ───────────────────────────────────────────────────────
-
-@cl.on_chat_start
-async def on_start():
-    await cl.Message(content=WELCOME).send()
-
-
-@cl.on_message
-async def on_message(message: cl.Message):
-    text = message.content.strip()
-
-    if _is_greeting(text):
-        await cl.Message(content=WELCOME).send()
+    GREETING_TRIGGERS = {"hi","hello","hey","greetings","good morning",
+                         "good afternoon","good evening","howdy","sup","yo"}
+    if text.lower() in GREETING_TRIGGERS:
+        yield (
+            "👋 Hello! Type a company name to get started.\n\n"
+            "Examples: `Stripe` · `Track Tesla` · `Compare PayPal and Stripe`",
+            None, None, None, None
+        )
         return
 
     block = _check_input(text)
     if block:
-        await cl.Message(content=block).send()
+        yield (block, None, None, None, None)
         return
 
-    async with cl.Step(name="Market Scout Pipeline", show_input=False) as step:
-        step.output = "🔎 Searching the web and processing…"
+    query = _extract_companies(text)
+    if not query:
+        yield ("Please enter a company name. Example: `Stripe`", None, None, None, None)
+        return
 
-        try:
-            # asyncio.to_thread is safe in Python 3.9+ and works correctly
-            # with Chainlit's ASGI context — avoids NoEventLoopError
-            result = await asyncio.to_thread(run_pipeline, text)
-        except Exception as exc:
-            await cl.Message(
-                content=f"❌ Pipeline error: {str(exc)}\n\nPlease check your API keys in the Render dashboard → Environment."
-            ).send()
-            return
+    yield (f"🔎 Searching for **{query}** — this may take 20–40 seconds…", None, None, None, None)
+
+    try:
+        result = run_pipeline(query)
+    except Exception as exc:
+        yield (
+            f"❌ **Pipeline error:** `{str(exc)}`\n\n"
+            "Check that **TAVILY_API_KEY** and **GROQ_API_KEY** are set in "
+            "Render → Environment.",
+            None, None, None, None
+        )
+        return
 
     summary          = result.get("summary", {})
     top_features     = result.get("top_features", [])
     files            = result.get("files", {})
     comparison_table = result.get("comparison_table", "")
 
+    # ── Features section ──
     if top_features:
         features_md = ""
         for i, f in enumerate(top_features, 1):
-            url_line = f"  - Source: {f['url']}\n" if f.get("url") else ""
+            url_md = f"\n  - 🔗 [Source]({f['url']})" if f.get("url") else ""
             features_md += (
-                f"**{i}. {f['feature']}**\n"
-                f"  - Category: `{f['category']}`  |  Date: {f['date']}  |  Status: `{f['status']}`\n"
-                f"{url_line}\n"
+                f"**{i}. {f['feature']}**  \n"
+                f"  `{f['category']}` · {f['date']} · **{f['status']}**"
+                f"{url_md}\n\n"
             )
     else:
-        features_md = "_No features found for this company._\n"
+        features_md = (
+            "> ⚠️ No features found. This usually means **TAVILY_API_KEY** "
+            "is not set in Render → Environment → add it and redeploy.\n"
+        )
 
     comparison_md = ""
     if comparison_table:
         comparison_md = f"\n### ⚖️ Company Comparison\n\n{comparison_table}\n"
 
-    report = f"""\
-## 📊 Market Scout Report
-**Company:** {result['company']}  
-**Run Date:** {result['run_date']}  |  **Version:** {result['version']}
+    report = f"""## 📊 Market Scout Report
+**Company:** {result['company']} &nbsp;|&nbsp; **Run Date:** {result['run_date']} &nbsp;|&nbsp; **Version:** {result['version']}
 
 ---
 
-### Findings Summary
+### 📈 Findings Summary
 
 | Timeframe | Count | Status |
-|-----------|------:|--------|
+|:----------|------:|:-------|
 | Total Features | {summary.get('total', 0)} | — |
 | Last 7 Days | {summary.get('week', 0)} | 🟢 WEEK |
 | Last 30 Days | {summary.get('month', 0)} | 🟡 MONTH |
@@ -165,39 +163,110 @@ async def on_message(message: cl.Message):
 
 ---
 
-### 🔑 Top Features Found
+### 🔑 Top Features
 
 {features_md}{comparison_md}
 ---
 
-### 📁 Reports Generated
-
-| File | Path |
-|------|------|
-| 🌐 Dashboard (HTML) | `{files.get('dashboard', 'N/A')}` |
-| 📊 Excel with Charts | `{files.get('excel', 'N/A')}` |
-| 📄 PDF Report | `{files.get('pdf', 'N/A')}` |
-| 📝 Text Briefing | `{files.get('briefing', 'N/A')}` |
-
----
 *Powered by Google ADK · Groq LLaMA 3.3 · Tavily Search*
 """
 
-    await cl.Message(content=report).send()
+    # Resolve file paths — return None if file doesn't exist (Gradio skips None)
+    def _path(key):
+        p = files.get(key, "")
+        return p if p and Path(p).exists() else None
 
-    attachments = []
-    for path_str in [
-        files.get("pdf", ""),
-        files.get("briefing", ""),
-        files.get("excel", ""),
-    ]:
-        if path_str and Path(path_str).exists():
-            attachments.append(
-                cl.File(name=Path(path_str).name, path=path_str, display="inline")
+    yield (report, _path("pdf"), _path("excel"), _path("briefing"), _path("dashboard"))
+
+
+# ─── Gradio UI ────────────────────────────────────────────────────────────────
+
+EXAMPLES = [
+    ["Stripe"],
+    ["Track Tesla"],
+    ["Compare PayPal and Stripe"],
+    ["Nike latest features"],
+    ["OpenAI"],
+]
+
+CSS = """
+#header { text-align: center; padding: 20px 0 10px; }
+#header h1 { font-size: 2rem; color: #1F4E79; }
+#header p  { color: #666; font-size: 0.95rem; }
+.report-box { font-size: 0.95rem; }
+footer { display: none !important; }
+"""
+
+with gr.Blocks(
+    title="Market Scout — Competitive Intelligence",
+    theme=gr.themes.Soft(primary_hue="blue", neutral_hue="slate"),
+    css=CSS,
+) as demo:
+
+    gr.HTML("""
+    <div id="header">
+      <h1>🔍 Market Scout</h1>
+      <p>AI-powered Competitive Intelligence &nbsp;·&nbsp;
+         Google ADK &nbsp;·&nbsp; Groq LLaMA 3.3 &nbsp;·&nbsp; Tavily Search</p>
+    </div>
+    """)
+
+    with gr.Row():
+        with gr.Column(scale=3):
+            user_input = gr.Textbox(
+                label="Company or query",
+                placeholder="e.g.  Stripe   |   Track Tesla   |   Compare PayPal and Stripe",
+                lines=1,
+                autofocus=True,
             )
+            run_btn = gr.Button("🚀 Run Analysis", variant="primary", size="lg")
 
-    if attachments:
-        await cl.Message(
-            content="📎 **Download your reports:**",
-            elements=attachments,
-        ).send()
+        with gr.Column(scale=1):
+            gr.Markdown("""
+**Quick examples:**
+- `Stripe`
+- `Track Tesla`
+- `Compare PayPal and Stripe`
+- `Nike latest features`
+- `OpenAI, Anthropic`
+            """)
+
+    report_out = gr.Markdown(
+        value="*Enter a company name above and click Run Analysis.*",
+        label="Report",
+        elem_classes=["report-box"],
+    )
+
+    gr.Markdown("### 📎 Download Reports")
+    with gr.Row():
+        pdf_out      = gr.File(label="📄 PDF Report",      visible=True, interactive=False)
+        excel_out    = gr.File(label="📊 Excel Workbook",  visible=True, interactive=False)
+        briefing_out = gr.File(label="📝 Text Briefing",   visible=True, interactive=False)
+        dashboard_out= gr.File(label="🌐 HTML Dashboard",  visible=True, interactive=False)
+
+    gr.Examples(
+        examples=EXAMPLES,
+        inputs=user_input,
+        label="Example queries",
+    )
+
+    # Wire up button and Enter key
+    run_btn.click(
+        fn=handle_query,
+        inputs=user_input,
+        outputs=[report_out, pdf_out, excel_out, briefing_out, dashboard_out],
+    )
+    user_input.submit(
+        fn=handle_query,
+        inputs=user_input,
+        outputs=[report_out, pdf_out, excel_out, briefing_out, dashboard_out],
+    )
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 7860))
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        share=False,
+        show_error=True,
+    )
