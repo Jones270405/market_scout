@@ -5,25 +5,26 @@ services:
     plan: free
     # ──────────────────────────────────────────────────────────────────────
     # FREE TIER NOTE:
-    #   /tmp is ephemeral — outputs (PDFs, Excel, history) are cleared on
-    #   each redeploy or restart. This is fine for demos and testing.
-    #   To persist files across restarts, upgrade to Starter ($7/mo) and
-    #   uncomment the `disk` block at the bottom of this file.
+    #   /tmp is ephemeral — outputs cleared on each redeploy/restart.
+    #   Fine for demos. Upgrade to Starter ($7/mo) + uncomment disk block
+    #   at the bottom for persistence.
     # ──────────────────────────────────────────────────────────────────────
-    buildCommand: pip install -r market_scout/requirements.txt
-    startCommand: cd market_scout && chainlit run app.py --host 0.0.0.0 --port $PORT
+    buildCommand: pip install -r requirements.txt
+    startCommand: chainlit run app.py --host 0.0.0.0 --port $PORT --headless
     envVars:
       - key: TAVILY_API_KEY
-        sync: false      # set manually in Render dashboard → Environment
+        sync: false
       - key: GROQ_API_KEY
-        sync: false      # set manually in Render dashboard → Environment
+        sync: false
+      - key: CHAINLIT_URL
+        sync: false      # set to https://market-scout-to37.onrender.com
       - key: MARKET_SCOUT_OUTPUT_DIR
         value: /tmp/market_scout_outputs
       - key: PYTHONUNBUFFERED
         value: "1"
 
-# ── Persistent disk (Starter plan and above only) ─────────────────────────────
-# Uncomment the 4 lines below after upgrading to Starter ($7/mo):
+# ── Persistent disk (Starter plan and above only) ────────────────────────────
+# Uncomment after upgrading to Starter ($7/mo):
 #
 #    disk:
 #      name: market-scout-data
