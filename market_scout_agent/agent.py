@@ -7,7 +7,7 @@ ADK requires this file to expose a variable named exactly `root_agent`.
 import os
 import sys
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 _HERE         = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_HERE)
@@ -68,7 +68,10 @@ def load_history() -> list:
         try:
             with open(_history_file(), "r") as f:
                 history = json.load(f)
-            return _revalidate_history(history)
+            revalidated = _revalidate_history(history)
+            # Save back so fixes persist across restarts
+            save_history(revalidated)
+            return revalidated
         except Exception:
             return []
     return []
@@ -138,7 +141,12 @@ def update_dashboard(all_runs: list) -> None:
     total_runs     = len(all_runs)
     total_features = sum(len(r.get("features", [])) for r in all_runs)
     companies      = list(set(r.get("company", "") for r in all_runs))
-    now_str        = datetime.now().strftime("%B %d, %Y at %H:%M")
+    from datetime import timezone as _tz2
+    _tz_off = int(os.environ.get("DISPLAY_TZ_OFFSET_HOURS", "5"))
+    _tz_min = int(os.environ.get("DISPLAY_TZ_OFFSET_MINS", "30"))
+    _tz_lbl = os.environ.get("DISPLAY_TZ_LABEL", "IST")
+    _disp_tz = _tz2(timedelta(hours=_tz_off, minutes=_tz_min))
+    now_str  = datetime.now(_tz2.utc).astimezone(_disp_tz).strftime(f"%B %d, %Y at %H:%M {_tz_lbl}")
 
     css = """<style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -240,8 +248,15 @@ def run_pipeline(query: str) -> dict:
     """
     companies = [c.strip() for c in query.split(",") if c.strip()]
     history   = load_history()
-    run_date  = datetime.now().strftime("%Y-%m-%d %H:%M")
-    version   = datetime.now().strftime("v%Y.%m.%d")
+    # Display time in configured timezone (default UTC+5:30 for IST)
+    from datetime import timezone as _tz
+    tz_offset = int(os.environ.get("DISPLAY_TZ_OFFSET_HOURS", "5"))
+    tz_mins   = int(os.environ.get("DISPLAY_TZ_OFFSET_MINS", "30"))
+    tz_label  = os.environ.get("DISPLAY_TZ_LABEL", "IST")
+    display_tz = _tz(timedelta(hours=tz_offset, minutes=tz_mins))
+    now        = datetime.now(_tz.utc).astimezone(display_tz)
+    run_date   = now.strftime(f"%Y-%m-%d %H:%M {tz_label}")
+    version    = now.strftime("v%Y.%m.%d")
     pdf_files = []
     new_runs  = []
 
