@@ -138,7 +138,7 @@ def update_dashboard(all_runs: list) -> None:
     total_runs     = len(all_runs)
     total_features = sum(len(r.get("features", [])) for r in all_runs)
     companies      = list(set(r.get("company", "") for r in all_runs))
-    now_str        = datetime.now().astimezone().strftime("%B %d, %Y at %H:%M %Z").strip()
+    now_str        = datetime.now().strftime("%B %d, %Y at %H:%M")
 
     css = """<style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -240,10 +240,8 @@ def run_pipeline(query: str) -> dict:
     """
     companies = [c.strip() for c in query.split(",") if c.strip()]
     history   = load_history()
-    # Use local time (respects server TZ env var) for display
-    now       = datetime.now().astimezone()
-    run_date  = now.strftime("%Y-%m-%d %H:%M %Z").strip()
-    version   = now.strftime("v%Y.%m.%d")
+    run_date  = datetime.now().strftime("%Y-%m-%d %H:%M")
+    version   = datetime.now().strftime("v%Y.%m.%d")
     pdf_files = []
     new_runs  = []
 

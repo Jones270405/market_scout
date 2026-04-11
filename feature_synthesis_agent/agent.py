@@ -59,12 +59,11 @@ def generate_pdf(company: str, features: list, run_date: str) -> str:
         year  = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR"])
         unver = sum(1 for f in features if f.get("status") == "UNVERIFIED")
 
-        stale = sum(1 for f in features if f.get("status") == "STALE")
         summary_data = [
-            ["Total", "Last 7 Days", "Last 30 Days", "Last 365 Days", "Unverified", "Stale"],
-            [str(len(features)), str(week), str(month), str(year), str(unver), str(stale)],
+            ["Total Features", "Last 7 Days", "Last 30 Days", "Last 365 Days", "Unverified"],
+            [str(len(features)), str(week), str(month), str(year), str(unver)],
         ]
-        summary_table = Table(summary_data, colWidths=[1.1 * inch] * 6)
+        summary_table = Table(summary_data, colWidths=[1.3 * inch] * 5)
         summary_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")),
             ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
