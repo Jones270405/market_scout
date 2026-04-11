@@ -512,8 +512,6 @@ EXAMPLES = [
 
 with gr.Blocks(
     title="Market Scout — Competitive Intelligence",
-    theme=gr.themes.Base(),
-    css=CSS,
     fill_height=True,
 ) as demo:
 
@@ -538,8 +536,7 @@ with gr.Blocks(
         value=[[None, WELCOME_MSG]],
         elem_id="ms-chatbot",
         show_label=False,
-        bubble_full_width=False,
-        height=None,        # controlled by CSS calc
+        height=None,
         scale=1,
         avatar_images=(
             None,
@@ -606,4 +603,6 @@ if __name__ == "__main__":
         server_port=port,
         share=False,
         show_error=True,
+        theme=gr.themes.Base(),
+        css=CSS,
     )
