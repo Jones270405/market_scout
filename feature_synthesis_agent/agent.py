@@ -10,8 +10,10 @@ from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools import FunctionTool
 
-OUTPUT_DIR = os.environ.get("MARKET_SCOUT_OUTPUT_DIR", os.path.join(os.getcwd(), "outputs"))
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+def _out_dir():
+    d = os.environ.get("MARKET_SCOUT_OUTPUT_DIR", os.path.join(os.getcwd(), "outputs"))
+    os.makedirs(d, exist_ok=True)
+    return d
 
 
 def generate_pdf(company: str, features: list, run_date: str) -> str:
@@ -31,7 +33,7 @@ def generate_pdf(company: str, features: list, run_date: str) -> str:
 
         version  = datetime.now().strftime("v%Y.%m.%d")
         filename = f"{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        pdf_path = os.path.join(OUTPUT_DIR, filename)
+        pdf_path = os.path.join(_out_dir(), filename)
 
         doc    = SimpleDocTemplate(
             pdf_path, pagesize=letter,
@@ -193,7 +195,7 @@ Google ADK + Groq LLaMA 3.3 + Tavily Search
 """
 
     filename      = f"{company}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_briefing.txt"
-    briefing_path = os.path.join(OUTPUT_DIR, filename)
+    briefing_path = os.path.join(_out_dir(), filename)
     with open(briefing_path, "w", encoding="utf-8") as bf:
         bf.write(briefing)
 

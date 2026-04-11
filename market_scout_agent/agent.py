@@ -25,26 +25,57 @@ from temporal_validation_agent.agent import validate_by_timeframe
 from feature_synthesis_agent.agent import generate_pdf, generate_briefing
 from comparison_report_agent.agent import update_excel
 
-OUTPUT_DIR     = os.environ.get("MARKET_SCOUT_OUTPUT_DIR", os.path.join(_PROJECT_ROOT, "outputs"))
-DASHBOARD_FILE = os.path.join(OUTPUT_DIR, "market_scout_dashboard.html")
-HISTORY_FILE   = os.path.join(OUTPUT_DIR, "market_scout_history.json")
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+def _out_dir() -> str:
+    """Resolve output dir at call time so env var changes are always honoured."""
+    d = os.environ.get("MARKET_SCOUT_OUTPUT_DIR", os.path.join(_PROJECT_ROOT, "outputs"))
+    os.makedirs(d, exist_ok=True)
+    return d
+
+def _dashboard_file() -> str: return os.path.join(_out_dir(), "market_scout_dashboard.html")
+def _history_file()   -> str: return os.path.join(_out_dir(), "market_scout_history.json")
 
 
 # ─── History helpers ──────────────────────────────────────────────────────────
 
+def _revalidate_history(history: list) -> list:
+    """
+    Re-run date validation on any feature that still has a raw Tavily date
+    string (e.g. 'Thu, 02 May 2024 00:00:00 GMT') so old saved runs display
+    correctly after the temporal-validation fix.
+    """
+    from temporal_validation_agent.agent import validate_by_timeframe
+    for run in history:
+        features = run.get("features", [])
+        if features:
+            run["features"] = validate_by_timeframe(features)
+            # Recompute summary counts
+            week  = sum(1 for f in features if f.get("status") == "WEEK")
+            month = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH"])
+            year  = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR"])
+            unver = sum(1 for f in features if f.get("status") == "UNVERIFIED")
+            run["summary"] = {
+                "total": len(features),
+                "week" : week,
+                "month": month,
+                "year" : year,
+                "unver": unver,
+            }
+    return history
+
+
 def load_history() -> list:
-    if os.path.exists(HISTORY_FILE):
+    if os.path.exists(_history_file()):
         try:
-            with open(HISTORY_FILE, "r") as f:
-                return json.load(f)
+            with open(_history_file(), "r") as f:
+                history = json.load(f)
+            return _revalidate_history(history)
         except Exception:
             return []
     return []
 
 
 def save_history(history: list) -> None:
-    with open(HISTORY_FILE, "w") as f:
+    with open(_history_file(), "w") as f:
         json.dump(history, f, indent=2)
 
 
@@ -189,7 +220,7 @@ border-left:4px solid #2E86AB;padding-left:15px}
 </body>
 </html>"""
 
-    with open(DASHBOARD_FILE, "w", encoding="utf-8") as fh:
+    with open(_dashboard_file(), "w", encoding="utf-8") as fh:
         fh.write(html)
 
 
@@ -283,7 +314,7 @@ def run_pipeline(query: str) -> dict:
         "top_features"    : top_features,
         "comparison_table": comparison_table,
         "files": {
-            "dashboard": DASHBOARD_FILE,
+            "dashboard": _dashboard_file(),
             "excel"    : str(excel_path),
             "pdf"      : str(pdf_file)   if pdf_file   else "Not generated",
             "briefing" : str(brief_file) if brief_file else "Not generated",

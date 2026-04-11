@@ -1,40 +1,65 @@
 # temporal_validation_agent/agent.py
 """
 Temporal Validation Sub-Agent
-Validates published dates and assigns WEEK / MONTH / YEAR / STALE / UNVERIFIED
-status to each feature. Also categorises features by snippet keywords.
+Validates published dates and assigns WEEK / MONTH / YEAR / STALE / UNVERIFIED.
+
+Key fixes:
+  - All parsed dates stripped to naive UTC to avoid offset-aware comparison errors
+  - Future dates (data errors) treated as UNVERIFIED instead of crashing
+  - Tavily "Thu, 10 Apr 2025 ..." RFC-2822 format handled correctly
+  - Category detection broadened
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.adk.agents import LlmAgent
 from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools import FunctionTool
 
 
+def _to_naive_utc(dt: datetime) -> datetime:
+    """Strip timezone info safely — convert to UTC first if aware."""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
 def _parse_date(date_str: str) -> datetime | None:
     """
-    Attempts to parse a date string using multiple strategies.
-    Returns a datetime object or None if unparseable.
+    Parse any date string Tavily might return.
+    Always returns a naive datetime in UTC, or None if unparseable.
+
+    Handles:
+      2025-04-10                  ISO date
+      2025-04-10T14:32:00Z        ISO with Z
+      2025-04-10T14:32:00+05:30   ISO with offset
+      2025-04-10 14:32:00+05:30   space separator
+      Thu, 10 Apr 2025 14:32 GMT  RFC-2822
+      April 10, 2025              long form
+      Apr 10, 2025                short form
+      2024                        year only
     """
-    if not date_str or date_str.strip().lower() in {"unknown", "none", "null", ""}:
+    if not date_str:
+        return None
+    date_str = date_str.strip()
+    if date_str.lower() in {"unknown", "none", "null", "n/a", ""}:
         return None
 
-    date_str = date_str.strip()
-
-    # Year-only: "2024" -> "2024-01-01"
+    # Year-only
     if len(date_str) == 4 and date_str.isdigit():
-        date_str = f"{date_str}-01-01"
+        return datetime(int(date_str), 1, 1)
 
-    # Try ISO slice first (handles "2025-04-10T14:32:00Z" etc.)
-    try:
-        return datetime.strptime(date_str[:10], "%Y-%m-%d")
-    except ValueError:
-        pass
+    # ISO slice — handles "2025-04-10T..." and "2025-04-10 14:..." safely
+    if len(date_str) >= 10 and date_str[4] == "-" and date_str[7] == "-":
+        try:
+            return datetime.strptime(date_str[:10], "%Y-%m-%d")
+        except ValueError:
+            pass
 
-    # Fallback: dateutil (handles "April 10, 2025", "10/04/2025", etc.)
+    # Full ISO with timezone via dateutil
     try:
-        from dateutil import parser as dateutil_parser
-        return dateutil_parser.parse(date_str, fuzzy=True)
+        from dateutil import parser as dup
+        parsed = dup.parse(date_str, fuzzy=True)
+        return _to_naive_utc(parsed)
     except Exception:
         pass
 
@@ -43,16 +68,10 @@ def _parse_date(date_str: str) -> datetime | None:
 
 def validate_by_timeframe(features: list) -> list:
     """
-    Validates each feature's published date and assigns a recency status:
-      WEEK       — published within last 7 days
-      MONTH      — published within last 30 days
-      YEAR       — published within last 365 days
-      STALE      — older than 365 days
-      UNVERIFIED — date missing or unparseable
-
+    Validates each feature's published date and assigns a recency status.
     Also assigns a category based on snippet keywords.
     """
-    today   = datetime.now()
+    today = datetime.utcnow()   # naive UTC — consistent reference point
     cutoffs = {
         "WEEK" : today - timedelta(days=7),
         "MONTH": today - timedelta(days=30),
@@ -60,36 +79,46 @@ def validate_by_timeframe(features: list) -> list:
     }
 
     for f in features:
-        # ── Categorise ──
-        snippet = f.get("snippet", "").lower()
-        if "api" in snippet:
+        # ── Categorise by snippet ──
+        snippet = (f.get("snippet", "") + " " + f.get("feature", "")).lower()
+        if any(k in snippet for k in ["api", "sdk", "endpoint", "webhook", "oauth"]):
             f["category"] = "API"
-        elif "integration" in snippet or "partnership" in snippet:
+        elif any(k in snippet for k in ["integration", "partnership", "connect", "partner"]):
             f["category"] = "Integration"
-        elif "security" in snippet or "tls" in snippet or "certificate" in snippet:
+        elif any(k in snippet for k in ["security", "tls", "ssl", "encrypt", "auth", "certificate", "compliance", "gdpr", "soc2"]):
             f["category"] = "Security"
-        elif "performance" in snippet:
+        elif any(k in snippet for k in ["performance", "speed", "latency", "faster", "optimis", "throughput"]):
             f["category"] = "Performance"
+        elif any(k in snippet for k in ["model", "ai", "llm", "gpt", "claude", "gemini", "neural"]):
+            f["category"] = "AI/ML"
+        elif any(k in snippet for k in ["mobile", "ios", "android", "app"]):
+            f["category"] = "Mobile"
         else:
             f["category"] = "Product"
 
-        # ── Validate date ──
-        pub_date = _parse_date(f.get("date", "unknown"))
+        # ── Validate & classify date ──
+        pub = _parse_date(f.get("date", ""))
 
-        if pub_date is None:
+        if pub is None:
             f["status"] = "UNVERIFIED"
             continue
 
-        if pub_date >= cutoffs["WEEK"]:
+        # Future date = data error → unverified
+        if pub > today + timedelta(days=1):
+            f["status"] = "UNVERIFIED"
+            f["date"]   = pub.strftime("%Y-%m-%d")
+            continue
+
+        if pub >= cutoffs["WEEK"]:
             f["status"] = "WEEK"
-        elif pub_date >= cutoffs["MONTH"]:
+        elif pub >= cutoffs["MONTH"]:
             f["status"] = "MONTH"
-        elif pub_date >= cutoffs["YEAR"]:
+        elif pub >= cutoffs["YEAR"]:
             f["status"] = "YEAR"
         else:
             f["status"] = "STALE"
 
-        f["date"] = pub_date.strftime("%Y-%m-%d")
+        f["date"] = pub.strftime("%Y-%m-%d")
 
     return features
 
@@ -103,8 +132,7 @@ temporal_validation_agent = LlmAgent(
     instruction=(
         "You are a Temporal Validation Agent. "
         "When given a list of feature dicts, call validate_by_timeframe with that list. "
-        "Return the resulting validated list exactly as received. "
-        "Do not summarise, modify, or add any commentary."
+        "Return the resulting validated list exactly as received."
     ),
     tools=[validation_tool],
 )
