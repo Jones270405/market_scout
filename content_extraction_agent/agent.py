@@ -39,7 +39,7 @@ def extract_features(raw: str) -> list:
                 "feature" : line.replace("* Title    :", "").strip(),
                 "category": "Product",
                 "date"    : "unknown",
-                "status"  : "UNVERIFIED",
+                "status"  : "OTHER SOURCES",
                 "url"     : "",
                 "snippet" : "",
             }
