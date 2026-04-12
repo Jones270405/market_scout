@@ -41,7 +41,7 @@ STATUS_COLORS = {
     "WEEK"      : "C6EFCE",
     "MONTH"     : "FFEB9C",
     "YEAR"      : "DDEBF7",
-    "UNVERIFIED": "F2F2F2",
+    "OTHER SOURCES": "F2F2F2",
     "STALE"     : "FFC7CE",
 }
 
@@ -102,7 +102,7 @@ def update_excel(all_runs: list) -> str:
     ws2 = wb.create_sheet("By Company")
 
     hdr2 = ["Company", "Total Features", "Last 7 Days (WEEK)",
-            "Last 30 Days (MONTH)", "Last 365 Days (YEAR)", "Unverified", "Stale"]
+            "Last 30 Days (MONTH)", "Last 365 Days (YEAR)", "Other Sources", "Stale"]
     for col, h in enumerate(hdr2, 1):
         c       = ws2.cell(row=1, column=col, value=h)
         c.fill  = _hfill("4B0082")
@@ -129,7 +129,7 @@ def update_excel(all_runs: list) -> str:
                 company_stats[comp]["year"]  += 1
             elif s == "YEAR":
                 company_stats[comp]["year"]  += 1
-            elif s == "UNVERIFIED":
+            elif s == "OTHER SOURCES":
                 company_stats[comp]["unver"] += 1
             elif s == "STALE":
                 company_stats[comp]["stale"] += 1
@@ -171,7 +171,7 @@ def update_excel(all_runs: list) -> str:
     # ── Sheet 3: Run History (chronological log) ─────────────────────────────
     ws3 = wb.create_sheet("Run History")
 
-    hdr3 = ["Run Date", "Company", "Total", "Week", "Month", "Year", "Unverified"]
+    hdr3 = ["Run Date", "Company", "Total", "Week", "Month", "Year", "Other Sources"]
     for col, h in enumerate(hdr3, 1):
         c       = ws3.cell(row=1, column=col, value=h)
         c.fill  = _hfill("1F4E79")
@@ -222,7 +222,7 @@ def build_comparison_table(runs: list) -> str:
     row_week  = "| Last 7 Days 🟢 |"
     row_month = "| Last 30 Days 🟡 |"
     row_year  = "| Last 365 Days 🔵 |"
-    row_unver = "| Unverified ⚪ |"
+    row_unver = "| Other Sources ⚪ |"
 
     for run in runs:
         company = run.get("company", "?")
