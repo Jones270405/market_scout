@@ -57,10 +57,10 @@ def generate_pdf(company: str, features: list, run_date: str) -> str:
         week  = sum(1 for f in features if f.get("status") == "WEEK")
         month = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH"])
         year  = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR"])
-        unver = sum(1 for f in features if f.get("status") == "UNVERIFIED")
+        unver = sum(1 for f in features if f.get("status") == "OTHER SOURCES")
 
         summary_data = [
-            ["Total Features", "Last 7 Days", "Last 30 Days", "Last 365 Days", "Unverified"],
+            ["Total Features", "Last 7 Days", "Last 30 Days", "Last 365 Days", "Other Sources"],
             [str(len(features)), str(week), str(month), str(year), str(unver)],
         ]
         summary_table = Table(summary_data, colWidths=[1.3 * inch] * 5)
@@ -144,7 +144,7 @@ def generate_briefing(company: str, features: list, run_date: str) -> str:
         return f"BRIEFING_SKIPPED — no features found for {company}."
 
     week_features = [f for f in features if f.get("status") == "WEEK"]
-    all_features  = [f for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR", "UNVERIFIED"]]
+    all_features  = [f for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR", "OTHER SOURCES"]]
 
     briefing = f"""
 {'=' * 60}
