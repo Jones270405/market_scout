@@ -102,7 +102,7 @@ adk run market_scout_agent
 3. Set:
    - **Runtime:** Python 3
    - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `chainlit run app.py --host 0.0.0.0 --port $PORT`
+   - **Start command:** `python app.py`
 4. Add environment variables (same as above).
 5. Under **Disks**, add a disk mounted at `/tmp/market_scout_outputs` (1 GB).
 6. Deploy.
@@ -147,7 +147,7 @@ In the Chainlit UI, PDF, Excel, and briefing files are also available as
 | 🟢 Green | WEEK | Published in last 7 days |
 | 🟡 Yellow | MONTH | Published in last 30 days |
 | 🔵 Blue | YEAR | Published in last 365 days |
-| ⚪ Grey | UNVERIFIED | Date unknown |
+| ⚪ Grey | OTHER SOURCES | Date unknown |
 | 🔴 Red | STALE | Older than 1 year |
 
 ---
