@@ -1,7 +1,7 @@
 # temporal_validation_agent/agent.py
 """
 Temporal Validation Sub-Agent
-Validates published dates and assigns WEEK / MONTH / YEAR / STALE / UNVERIFIED.
+Validates published dates and assigns WEEK / MONTH / YEAR / STALE / OTHER SOURCES.
 
 Key fixes:
   - All parsed dates stripped to naive UTC to avoid offset-aware comparison errors
@@ -100,12 +100,12 @@ def validate_by_timeframe(features: list) -> list:
         pub = _parse_date(f.get("date", ""))
 
         if pub is None:
-            f["status"] = "UNVERIFIED"
+            f["status"] = "OTHER SOURCES"
             continue
 
         # Future date = data error → unverified
         if pub > today + timedelta(days=1):
-            f["status"] = "UNVERIFIED"
+            f["status"] = "OTHER SOURCES"
             f["date"]   = pub.strftime("%Y-%m-%d")
             continue
 
@@ -128,7 +128,7 @@ validation_tool = FunctionTool(func=validate_by_timeframe)
 temporal_validation_agent = LlmAgent(
     name="temporal_validation_agent",
     model=LiteLlm(model="groq/llama-3.1-8b-instant"),
-    description="Validates feature dates and assigns WEEK/MONTH/YEAR/STALE/UNVERIFIED recency status.",
+    description="Validates feature dates and assigns WEEK/MONTH/YEAR/STALE/OTHER SOURCES recency status.",
     instruction=(
         "You are a Temporal Validation Agent. "
         "When given a list of feature dicts, call validate_by_timeframe with that list. "
