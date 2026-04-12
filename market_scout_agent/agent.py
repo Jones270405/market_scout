@@ -52,7 +52,7 @@ def _revalidate_history(history: list) -> list:
             week  = sum(1 for f in features if f.get("status") == "WEEK")
             month = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH"])
             year  = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR"])
-            unver = sum(1 for f in features if f.get("status") == "UNVERIFIED")
+            unver = sum(1 for f in features if f.get("status") == "OTHER SOURCES")
             run["summary"] = {
                 "total": len(features),
                 "week" : week,
@@ -93,7 +93,7 @@ def update_dashboard(all_runs: list) -> None:
         "WEEK"      : "#C6EFCE",
         "MONTH"     : "#FFEB9C",
         "YEAR"      : "#DDEBF7",
-        "UNVERIFIED": "#F2F2F2",
+        "OTHER SOURCES": "#F2F2F2",
         "STALE"     : "#FFC7CE",
     }
 
@@ -104,7 +104,7 @@ def update_dashboard(all_runs: list) -> None:
         week_cnt  = sum(1 for f in features if f.get("status") == "WEEK")
         month_cnt = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH"])
         year_cnt  = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR"])
-        unver_cnt = sum(1 for f in features if f.get("status") == "UNVERIFIED")
+        unver_cnt = sum(1 for f in features if f.get("status") == "OTHER SOURCES")
 
         feature_rows = ""
         for f in features:
@@ -131,7 +131,7 @@ def update_dashboard(all_runs: list) -> None:
             f"<span class='stat green'>7d: {week_cnt}</span>"
             f"<span class='stat orange'>30d: {month_cnt}</span>"
             f"<span class='stat blue'>365d: {year_cnt}</span>"
-            f"<span class='stat grey'>Unverified: {unver_cnt}</span>"
+            f"<span class='stat grey'>Other Sources: {unver_cnt}</span>"
             f"</div></div>"
             f"<table><tr><th>Feature</th><th>Category</th><th>Date</th><th>Status</th><th>Source</th></tr>"
             f"{feature_rows if feature_rows else no_data}"
@@ -218,12 +218,12 @@ border-left:4px solid #2E86AB;padding-left:15px}
     <div class='legend-item'><div class='legend-dot' style='background:#C6EFCE'></div>WEEK — Last 7 days</div>
     <div class='legend-item'><div class='legend-dot' style='background:#FFEB9C'></div>MONTH — Last 30 days</div>
     <div class='legend-item'><div class='legend-dot' style='background:#DDEBF7'></div>YEAR — Last 365 days</div>
-    <div class='legend-item'><div class='legend-dot' style='background:#F2F2F2'></div>UNVERIFIED — Date unknown</div>
+    <div class='legend-item'><div class='legend-dot' style='background:#F2F2F2'></div>OTHER SOURCES — Date unknown</div>
     <div class='legend-item'><div class='legend-dot' style='background:#FFC7CE'></div>STALE — Older than 1 year</div>
   </div>
   <div class='section-title'>Run History (Latest First)</div>
   {timeline_html if timeline_html else no_runs_msg}
-  <div class='version'>Market Scout {version} | Google ADK + Groq LLaMA 3.3 | Chainlit UI</div>
+  <div class='version'>Market Scout {version} | Google ADK + Groq LLaMA 3.3 | Gradio UI</div>
 </div>
 </body>
 </html>"""
@@ -268,7 +268,7 @@ def run_pipeline(query: str) -> dict:
         week  = sum(1 for f in features if f.get("status") == "WEEK")
         month = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH"])
         year  = sum(1 for f in features if f.get("status") in ["WEEK", "MONTH", "YEAR"])
-        unver = sum(1 for f in features if f.get("status") == "UNVERIFIED")
+        unver = sum(1 for f in features if f.get("status") == "OTHER SOURCES")
 
         pdf_path      = generate_pdf(company, features, run_date)
         briefing_path = generate_briefing(company, features, run_date)
@@ -308,7 +308,7 @@ def run_pipeline(query: str) -> dict:
             "url"     : f.get("url", ""),
         }
         for f in last_features
-        if f.get("status") in ["WEEK", "MONTH", "YEAR", "UNVERIFIED"]
+        if f.get("status") in ["WEEK", "MONTH", "YEAR", "OTHER SOURCES"]
     ][:5]
 
     pdf_file   = next((p for p in pdf_files if str(p).endswith(".pdf")), None)
@@ -393,7 +393,7 @@ _INSTRUCTION = (
     "| Last 7 Days | [summary.week] | WEEK |\n"
     "| Last 30 Days | [summary.month] | MONTH |\n"
     "| Last 365 Days | [summary.year] | YEAR |\n"
-    "| Unverified | [summary.unver] | Unknown Date |\n\n"
+    "| Other Sources | [summary.unver] | Unknown Date |\n\n"
     "---\n\n"
     "### Top Features Found\n"
     "For each item in top_features write:\n"
