@@ -223,7 +223,7 @@ border-left:4px solid #2E86AB;padding-left:15px}
   </div>
   <div class='section-title'>Run History (Latest First)</div>
   {timeline_html if timeline_html else no_runs_msg}
-  <div class='version'>Market Scout {version} | Google ADK + Groq LLaMA 3.3 | Gradio UI</div>
+  <div class='version'>Market Scout {version} | Google ADK + Groq LLaMA 3.3 | Chaninlit UI</div>
 </div>
 </body>
 </html>"""
